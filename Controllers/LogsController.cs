@@ -2,6 +2,7 @@
 
 using Microsoft.AspNetCore.Mvc;
 using LoggingAPI.Models;
+using Nest;
 
 namespace LoggingAPI.Controllers
 {
@@ -43,7 +44,7 @@ namespace LoggingAPI.Controllers
             //to differentiate each log is which category and print extra details
             //basically prints back the full log
             // !!
-            switch (log.Level.ToUpper())
+            switch (log.Level?.ToUpper())
             {
                 case "INFO":
                     Console.WriteLine($"[INFO] {log.Timestamp}: {log.Message}");
@@ -59,11 +60,23 @@ namespace LoggingAPI.Controllers
                     break;
             }
             //later send to elastic search here
+            // Save to Elasticsearch
+            var client = ElasticClientProvider.GetClient();
+            var response = client.IndexDocument(log);
 
-            _logger.LogInformation("Log entry validated succesfully: {@Log}", log);
-            return Created("",new ApiResponse
+            if (!response.IsValid)
             {
-                Message = "Log accepted.",
+                _logger.LogError("Failed to index log in ELasticsearch: {Error}", response.OriginalException.Message);
+                return StatusCode(500, new ApiResponse
+                {
+                    Message = "Log indexing failed.",
+                    Error = response.OriginalException.Message
+                });
+            }
+                
+            return Created("", new ApiResponse
+            {
+                Message = "Log accepted and saved to Elasticsearch.",
                 Data = log
             });
 
@@ -80,6 +93,7 @@ namespace LoggingAPI.Controllers
         }
 
         //testing to make sure controller is working, temporary GET endpoint
+        //shown in the web http://localhost:5191/logs
         [HttpGet]
         public IActionResult Ping()
         {
