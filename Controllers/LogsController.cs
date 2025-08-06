@@ -88,8 +88,10 @@ namespace LoggingAPI.Controllers
             var validLevels = new[] { "INFO", "WARN", "ERROR", "DEBUG" };
             return log.Timestamp != default &&
             validLevels.Contains(log.Level.ToUpper()) &&
-            !string.IsNullOrWhiteSpace(log.Service) &&
-            !string.IsNullOrWhiteSpace(log.Message);
+            !string.IsNullOrWhiteSpace(log.Source) &&
+            !string.IsNullOrWhiteSpace(log.Message)&&
+            !string.IsNullOrWhiteSpace(log.UserID)&&
+            !string.IsNullOrWhiteSpace(log.RequestPath);
         }
 
         //testing to make sure controller is working, temporary GET endpoint
