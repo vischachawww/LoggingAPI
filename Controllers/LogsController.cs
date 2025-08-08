@@ -14,7 +14,7 @@ namespace LoggingAPI.Controllers
     public class LogsController : ControllerBase
     //define a controller named LogsController, inheriting from ControllerBase (used for APIs)
     {
-        private readonly ILogger<LogsController> _logger;
+        private readonly ILogger<LogsController> _logger;   //DI
         public LogsController(ILogger<LogsController> logger)
         {
             _logger = logger;
@@ -32,7 +32,7 @@ namespace LoggingAPI.Controllers
                 .Select(errors => errors.ErrorMessage)
                 .ToArray();
 
-                return BadRequest(new ApiResponse
+                return BadRequest(new ApiResponse  //400
                 {
                     Message = "Validation failed",
                     Error = "Invalid log format.",
@@ -42,8 +42,7 @@ namespace LoggingAPI.Controllers
 
             //simulate different behavior by log level 
             //to differentiate each log is which category and print extra details
-            //basically prints back the full log
-            // !!
+
             switch (log.Level?.ToUpper())
             {
                 case "INFO":
@@ -73,8 +72,8 @@ namespace LoggingAPI.Controllers
                     Error = response.OriginalException.Message
                 });
             }
-                
-            return Created("", new ApiResponse
+
+            return Created("", new ApiResponse    //201
             {
                 Message = "Log accepted and saved to Elasticsearch.",
                 Data = log
@@ -89,8 +88,8 @@ namespace LoggingAPI.Controllers
             return log.Timestamp != default &&
             validLevels.Contains(log.Level.ToUpper()) &&
             !string.IsNullOrWhiteSpace(log.Source) &&
-            !string.IsNullOrWhiteSpace(log.Message)&&
-            !string.IsNullOrWhiteSpace(log.UserID)&&
+            !string.IsNullOrWhiteSpace(log.Message) &&
+            !string.IsNullOrWhiteSpace(log.UserID) &&
             !string.IsNullOrWhiteSpace(log.RequestPath);
         }
 
@@ -102,12 +101,10 @@ namespace LoggingAPI.Controllers
             return Ok("API is up!");
         }
     }
-    
-    
-    
-    
-    
 
 
 }
+
+
+
 

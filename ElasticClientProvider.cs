@@ -4,7 +4,7 @@ using System;
 
 public static class ElasticClientProvider
 {
-    private static ElasticClient _client;
+    private static ElasticClient _client;   //DI
 
     public static ElasticClient GetClient()
     {
