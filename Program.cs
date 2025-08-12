@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.AspNetCore.Identity;
 using Serilog;
+using Serilog.Formatting.Json;
 using Serilog.Sinks.Elasticsearch;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,17 +12,37 @@ Log.Logger = new LoggerConfiguration()
 .ReadFrom.Configuration(builder.Configuration)
 .Enrich.FromLogContext()
 .Enrich.WithMachineName()
-.WriteTo.Console()
-//why 9200 !!
-.WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
-{
+.MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning) // hides most ASP.NET noise
+.MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Warning)
+//console shows everything 
+.WriteTo.Console(new JsonFormatter()) //default compact format that can look like the built-in ASP.NET output
+//9200 is default HTTP port for elasticsearch
+//Json sink
+//Elasticsearch shows only accepted log
+.WriteTo.Logger(lc => lc
+    .Filter.ByExcluding(le => le.Properties.ContainsKey("Rejected") &&
+                               le.Properties["Rejected"].ToString()=="True")
+    .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
+    {
     AutoRegisterTemplate = true,
     IndexFormat = $"myapp-logs-{DateTime.UtcNow:yyyy-MM}"
-})
+    })
+)
 .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day)
 .CreateLogger();
 
+//remove built-in loggers
+//[WARN] == buult-in asp.net console formatter
+builder.Logging.ClearProviders();
+
 builder.Host.UseSerilog();
+//add serilog to Host
+// builder.Host.UseSerilog((context, services, configuration) =>
+// {
+//     configuration
+//         .MinimumLevel.Debug()
+//         .WriteTo.Console(new Serilog.Formatting.Json.JsonFormatter());
+// });
 
 
 // Add services to the container.
@@ -39,8 +60,17 @@ app.UseEndpoints(endpoints =>
 
 app.MapGet("/", () =>
 {
-    Log.Information("Hello form Serilog direct to Elasticsearch!");
+    //accepted log (from console + elasticsearch)
+    Log.Information("Hello from Serilog direct to Elasticsearch!");
     return "OK";
+});
+
+app.MapGet("/reject", () =>
+{
+    //Rejected log(goes only to console)
+    Log.ForContext("Rejected", true)
+        .Warning("Rejected log due to validation failure!");
+    return "Rejected";
 });
 
 // Configure the HTTP request pipeline.
