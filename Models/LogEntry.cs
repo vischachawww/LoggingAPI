@@ -16,11 +16,9 @@ namespace LoggingAPI.Models
         public string Message { get; set; } = string.Empty;
         [Required]
         public string Source { get; set; } = string.Empty;
-        [Required]
         public string UserID { get; set; } = string.Empty;
-        [Required]
         public string RequestPath { get; set; } = string.Empty;
-        [Range(100, 599)]
+        [Range(100, 599)] //int default value is 0, but 0 is outside of range. no status in log = validation fail
         public int Status { get; set; }
 
         //optional 

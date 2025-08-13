@@ -3,7 +3,8 @@
 using Microsoft.AspNetCore.Mvc;
 using LoggingAPI.Models;
 using Nest;
-
+using System.ComponentModel.DataAnnotations;
+using Elasticsearch;
 namespace LoggingAPI.Controllers
 {
 
@@ -15,82 +16,86 @@ namespace LoggingAPI.Controllers
     //define a controller named LogsController, inheriting from ControllerBase (used for APIs)
     {
         private readonly ILogger<LogsController> _logger;   //DI
-        public LogsController(ILogger<LogsController> logger)
+        private readonly IElasticClient _elasticClient;
+        public LogsController(ILogger<LogsController> logger, IElasticClient elasticClient)
         {
             _logger = logger;
+            _elasticClient = elasticClient;
         }
 
         [HttpPost]
-        public IActionResult Postlog([FromBody] LogEntry log)
+        public async Task<ActionResult<ApiResponse<LogEntry>>> PostLog([FromBody] LogEntry log)
         {
-            //custom check to make sure all field is valid
-            if (!IsValidLog(log))
+            try
             {
-                _logger.LogWarning("Invalid log entry received: {@Log}", log);
-                var errors = ModelState.Values
-                .SelectMany(v => v.Errors)
-                .Select(errors => errors.ErrorMessage)
-                .ToArray();
-
-                return BadRequest(new ApiResponse  //400
+                // Validation
+                if (!IsValidLog(log))
                 {
-                    Message = "Validation failed",
-                    Error = "Invalid log format.",
-                    Data = errors
+                    _logger.LogWarning("Invalid log entry received: {@Log}", log);
+                    return BadRequest(new ApiResponse<LogEntry>
+                    {
+                        Success = false,
+                        Message = "Validation failed",
+                        Errors = GetValidationErrors(log)
+                    });
+                }
+
+                // Index to Elasticsearch
+                var response = await _elasticClient.IndexDocumentAsync(log);
+                if (!response.IsValid)
+                {
+                    _logger.LogError("Elasticsearch error: {DebugInfo}", response.DebugInformation);
+                    return StatusCode(500, new ApiResponse<LogEntry>
+                    {
+                        Success = false,
+                        Message = "Failed to index log",
+                        Errors = new[] { response.OriginalException?.Message ?? "Unknown Elasticsearch error" }
+                    });
+                }
+
+                return CreatedAtAction(nameof(PostLog), new ApiResponse<LogEntry>
+                {
+                    Success = true,
+                    Message = "Log indexed successfully",
+                    Data = log
                 });
             }
-
-            //simulate different behavior by log level 
-            //to differentiate each log is which category and print extra details
-
-            switch (log.Level?.ToUpper())
+            catch (Exception ex)
             {
-                case "INFO":
-                    Console.WriteLine($"[INFO] {log.Timestamp}: {log.Message}");
-                    break;
-                case "WARN":
-                    Console.WriteLine($"[WARN] {log.Timestamp}: {log.Message}");
-                    break;
-                case "ERROR":
-                    Console.WriteLine($"[ERROR] {log.Timestamp}: {log.Message}\nCode: {log.ErrorCode}\nStack: {log.StackTrace}");
-                    break;
-                case "DEBUG":
-                    Console.WriteLine($"[DEBUG] {log.Timestamp}: {log.Message}");
-                    break;
-            }
-            //later send to elastic search here
-            // Save to Elasticsearch
-            var client = ElasticClientProvider.GetClient();
-            var response = client.IndexDocument(log);
-
-            if (!response.IsValid)
-            {
-                _logger.LogError("Failed to index log in ELasticsearch: {Error}", response.OriginalException.Message);
-                return StatusCode(500, new ApiResponse
+                _logger.LogError(ex, "Unexpected error processing log");
+                return StatusCode(500, new ApiResponse<LogEntry>
                 {
-                    Message = "Log indexing failed.",
-                    Error = response.OriginalException.Message
+                    Success = false,
+                    Message = "Internal server error",
+                    Errors = new[] { ex.Message }
                 });
             }
-
-            return Created("", new ApiResponse    //201
-            {
-                Message = "Log accepted and saved to Elasticsearch.",
-                Data = log
-            });
-
         }
+
 
         //validation method
         private bool IsValidLog(LogEntry log)
         {
+            if (log == null) return false;
+
             var validLevels = new[] { "INFO", "WARN", "ERROR", "DEBUG" };
             return log.Timestamp != default &&
             validLevels.Contains(log.Level.ToUpper()) &&
             !string.IsNullOrWhiteSpace(log.Source) &&
-            !string.IsNullOrWhiteSpace(log.Message) &&
-            !string.IsNullOrWhiteSpace(log.UserID) &&
-            !string.IsNullOrWhiteSpace(log.RequestPath);
+            !string.IsNullOrWhiteSpace(log.Message);
+        }
+
+        private IEnumerable<string> GetValidationErrors(LogEntry log)
+        {
+            var errors = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(log.Message))
+                errors.Add("Message is required");
+
+            if (string.IsNullOrWhiteSpace(log.Level))
+                errors.Add("Level is required");
+
+            return errors;
         }
 
         //testing to make sure controller is working, temporary GET endpoint
@@ -98,10 +103,49 @@ namespace LoggingAPI.Controllers
         [HttpGet]
         public IActionResult Ping()
         {
-            return Ok("API is up!");
+            return Ok(new ApiResponse<string>
+            {
+                Success = true,
+                Message = "API is up!",
+                Data = DateTime.UtcNow.ToString("o")
+            });
         }
-    }
 
+//health check endpoint
+        [HttpGet("es-health")]
+        public async Task<IActionResult> CheckElasticsearch()
+        {
+            try
+            {
+                // Basic ping check
+                var pingResponse = await _elasticClient.PingAsync();
+                if (!pingResponse.IsValid)
+                    return StatusCode(500, "Failed to connect to Elasticsearch");
+
+                // Simplified index check
+                var indexResponse = await _elasticClient.Indices.ExistsAsync("logs-*");
+
+                return Ok(new
+                {
+                    Status = "Operational",
+                    PingSuccess = pingResponse.IsValid,
+                    IndicesExist = indexResponse.Exists,
+                    DebugInfo = pingResponse.DebugInformation
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    Error = ex.Message,
+                    StackTrace = ex.StackTrace
+                });
+            }
+        }
+        
+
+
+    }
 
 }
 
