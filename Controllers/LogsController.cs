@@ -5,6 +5,7 @@ using LoggingAPI.Models;
 using Nest;
 using System.ComponentModel.DataAnnotations;
 using Elasticsearch;
+using Serilog;
 namespace LoggingAPI.Controllers
 {
 
@@ -26,6 +27,10 @@ namespace LoggingAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<ApiResponse<LogEntry>>> PostLog([FromBody] LogEntry log)
         {
+            // Log the incoming request (good or bad)
+            _logger.LogInformation("Received log submission: {@LogEntry}", log);
+            //_logger.LogDebug("Full log details: {@LogEntry}", log); // Debug view of entire object
+
             try
             {
                 // Validation
@@ -40,7 +45,7 @@ namespace LoggingAPI.Controllers
                     });
                 }
 
-                // Index to Elasticsearch
+                // Index to Elasticsearch 
                 var response = await _elasticClient.IndexDocumentAsync(log);
                 if (!response.IsValid)
                 {
@@ -93,7 +98,10 @@ namespace LoggingAPI.Controllers
                 errors.Add("Message is required");
 
             if (string.IsNullOrWhiteSpace(log.Level))
-                errors.Add("Level is required");
+                errors.Add("Level [INFO, WARN, ERROR, DEBUG] is required");
+
+            if (string.IsNullOrWhiteSpace(log.Source))
+                errors.Add("Source is required");
 
             return errors;
         }
@@ -111,7 +119,15 @@ namespace LoggingAPI.Controllers
             });
         }
 
-//health check endpoint
+
+        [HttpGet("test")]
+        public IActionResult Test()
+        {
+            Log.Information("This is a test message");
+            return Ok();
+        }
+
+        //health check endpoint
         [HttpGet("es-health")]
         public async Task<IActionResult> CheckElasticsearch()
         {
@@ -142,12 +158,48 @@ namespace LoggingAPI.Controllers
                 });
             }
         }
-        
 
 
     }
 
+
+    [ApiController]
+    [Route("sample")]
+    public class SampleController : ControllerBase
+    {
+        private readonly ILogger<SampleController> _logger;
+
+        public SampleController(ILogger<SampleController> logger)
+        {
+            _logger = logger;
+        }
+
+        [HttpGet]
+        public IActionResult Get()
+        {
+            // Different log levels
+            _logger.LogInformation("This is an INFO message");
+            _logger.LogDebug("This is a DEBUG message");
+            _logger.LogWarning("This is a WARNING message");
+            _logger.LogError("This is an ERROR message");
+
+            try
+            {
+                throw new Exception("Sample exception");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "This is an ERROR with exception");
+            }
+
+            return Ok();
+        }
+    }
+
+
+
 }
+
 
 
 

@@ -14,7 +14,6 @@ namespace LoggingAPI.Models
         public string Level { get; set; } = string.Empty;
         [Required]
         public string Message { get; set; } = string.Empty;
-        [Required]
         public string Source { get; set; } = string.Empty;
         public string UserID { get; set; } = string.Empty;
         public string RequestPath { get; set; } = string.Empty;
