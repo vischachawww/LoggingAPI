@@ -12,7 +12,7 @@ public class LoggingMiddleware
 
     public async Task Invoke(HttpContext context)
     {
-        // Start with basic request info (NO AUTH DETAILS)
+        //start with basic request info (NO AUTH DETAILS)
         using (_logger.BeginScope(new Dictionary<string, object>
         {
             ["RequestPath"] = context.Request.Path,

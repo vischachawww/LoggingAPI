@@ -5,6 +5,7 @@ using LoggingAPI.Models;
 using Nest;
 using System.ComponentModel.DataAnnotations;
 using Elasticsearch;
+
 using Serilog;
 namespace LoggingAPI.Controllers
 {
@@ -24,9 +25,10 @@ namespace LoggingAPI.Controllers
             _elasticClient = elasticClient;
         }
 
-        [HttpPost]
+        [HttpPost]      
         public async Task<ActionResult<ApiResponse<LogEntry>>> PostLog([FromBody] LogEntry log)
         {
+
             // Log the incoming request (good or bad)
             _logger.LogInformation("Received log submission: {@LogEntry}", log);
             //_logger.LogDebug("Full log details: {@LogEntry}", log); // Debug view of entire object
@@ -44,8 +46,8 @@ namespace LoggingAPI.Controllers
                         Errors = GetValidationErrors(log)
                     });
                 }
-
-                // Index to Elasticsearch 
+                
+                //forward to Elasticsearch 
                 var response = await _elasticClient.IndexDocumentAsync(log);
                 if (!response.IsValid)
                 {

@@ -58,9 +58,10 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 //serilog registration, use serilog for all app logs = ONE only
-builder.Host.UseSerilog(); 
+builder.Host.UseSerilog();
 
 //register elasticsearch client as singleton
+//NEST's IElasticClient, push data to ES after pass thro logic in API
 builder.Services.AddSingleton<IElasticClient>(provider => 
 {
     var settings = new ConnectionSettings(new Uri("http://localhost:9200"))
@@ -111,15 +112,15 @@ app.Use(async (context, next) =>
     var requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
     context.Request.Body.Position = 0;
 
-    Log.Debug("Request: {Method} {Path} {Body}",
-        context.Request.Method,
-        context.Request.Path,
-        requestBody);
+    // Log.Debug("Request: {Method} {Path} {Body}",
+    //     context.Request.Method,
+    //     context.Request.Path,
+    //     requestBody);
 
     await next();
 });
 
-//add Global Exception Handler HERE (right after UseRouting)
+//add Global Exception Handler to logs exceptions to Serilog and ES
 app.UseExceptionHandler(exceptionHandlerApp =>
 {
     exceptionHandlerApp.Run(async context =>
@@ -145,6 +146,7 @@ app.UseExceptionHandler(exceptionHandlerApp =>
 
 
 // HTTP logging middleware
+//logs every request method, path, status code and duration in console
 app.Use(async (context, next) =>
 {
     var start = DateTime.UtcNow;
