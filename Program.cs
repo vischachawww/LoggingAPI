@@ -1,17 +1,13 @@
 using System.Data;
 using System.Runtime.Serialization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc; // For BadRequestObjectResult
 using Nest;
 using Serilog;
 using Serilog.Events;
-using Serilog.Formatting.Json;
+using Serilog.Context;
+using Serilog.Formatting.Elasticsearch;
 using Serilog.Sinks.Elasticsearch;
 using Serilog.Enrichers;
-using Elasticsearch.Net;
-using System.Diagnostics;
-using System.IO;
-using System.Text;
 using Microsoft.AspNetCore.Diagnostics; //this provides IExceptionHandlerFeature
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,41 +16,30 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 
 //setup serilog config
+// Log.Logger = new LoggerConfiguration()
+//     //.MinimumLevel.Debug()
+//     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+//     .Enrich.WithProperty("Application", "LoggingAPI")   //your service name
+//     .Enrich.FromLogContext()        //for dynamic properties, allow adding properties later
+//     .Enrich.WithMachineName()       //which server
+//     .Enrich.WithEnvironmentName()
+//     .Enrich.WithProcessId()         //add current process ID to every log entry
+//     .Enrich.WithThreadId()          //useful for debugging multithread apps
+//     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}")
+//     .WriteTo.File("logs/log.txt", 
+//         rollingInterval: RollingInterval.Day,
+//         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level}] {Message}{NewLine}{Exception}")
+//     .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
+//     {
+//         AutoRegisterTemplate = true,
+//         IndexFormat = "logging-api-{0:yyyy.MM.dd}",
+//         CustomFormatter = new ElasticsearchJsonFormatter()
+//     })
+//     .CreateLogger();
+
+// 1️⃣ Read Serilog config from appsettings.json (and appsettings.{Environment}.json)
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    .Enrich.WithProperty("Application", "LoggingAPI")   //your service name
-    .Enrich.FromLogContext()        //for dynamic properties, allow adding properties later
-    .Enrich.WithMachineName()       //which server
-    .Enrich.WithProcessId()         //add current process ID to every log entry
-    .Enrich.WithThreadId()          //useful for debugging multithread apps
-    .WriteTo.Console(               //default compact format that can look like the built-in ASP.NET output
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"
-    )
-    .WriteTo.File("logs/log.txt", 
-        rollingInterval: RollingInterval.Day,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level}] {Message}{NewLine}{Exception}")
-    .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
-    {
-        AutoRegisterTemplate = true,
-        IndexFormat = "logs-{0:yyyy.MM.dd}",
-        EmitEventFailure = EmitEventFailureHandling.WriteToSelfLog |
-                         EmitEventFailureHandling.RaiseCallback,
-        //keep your debug callbcks but limit their output
-        ModifyConnectionSettings = x => x
-            .EnableDebugMode()
-            .DisableDirectStreaming()
-            .OnRequestCompleted(details =>
-            {
-                if (details.HttpStatusCode >= 400)
-                {
-                    Log.Debug("ES Error: {Method} {Uri} => {Status}",
-                        details.HttpMethod,
-                        details.Uri,
-                        details.HttpStatusCode);
-                }
-            })
-    })
+    .ReadFrom.Configuration(builder.Configuration)
     .CreateLogger();
 
 //serilog registration, use serilog for all app logs = ONE only
@@ -165,9 +150,24 @@ app.Use(async (context, next) =>
 app.UseEndpoints(endpoints => endpoints.MapControllers());
 
 try
-{
-    Log.Information("Application starting up");
-    app.Run();
+// {
+//     Log.Information("Application starting up");
+//     app.Run();
+// }
+{ //NEW
+    Log.Information("Application started");
+
+    // Simulating request logging with LogContext
+    using (LogContext.PushProperty("RequestId", Guid.NewGuid()))
+    using (LogContext.PushProperty("Requester", "JohnDoe"))
+    using (LogContext.PushProperty("ContactId", "AUTO-8d3a-86c825"))
+    using (LogContext.PushProperty("Environment", "Production"))
+    using (LogContext.PushProperty("SourceContext", "Health.Preadmission.Web.PreadmissionController"))
+    {
+        Log.Information("Failed to log on user {ContactId}", "AUTO-8d3a-86c825");
+    }
+
+    Log.Information("Application finished");
 }
 catch (Exception ex)
 {

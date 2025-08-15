@@ -3,11 +3,14 @@
 using Microsoft.AspNetCore.Mvc;
 using LoggingAPI.Models;
 using Nest;
-using System.ComponentModel.DataAnnotations;
 using Elasticsearch;
-
+using Serilog.Context;
 using Serilog;
+using Serilog.Enrichers;
+using System.ComponentModel.DataAnnotations;
+
 namespace LoggingAPI.Controllers
+
 {
 
     //define base route 
@@ -17,7 +20,7 @@ namespace LoggingAPI.Controllers
     public class LogsController : ControllerBase
     //define a controller named LogsController, inheriting from ControllerBase (used for APIs)
     {
-        private readonly ILogger<LogsController> _logger;   //DI
+        private readonly ILogger<LogsController> _logger;   //Microsoft.Extensions.Logging
         private readonly IElasticClient _elasticClient;
         public LogsController(ILogger<LogsController> logger, IElasticClient elasticClient)
         {
@@ -47,6 +50,18 @@ namespace LoggingAPI.Controllers
                     });
                 }
                 
+                //push structured properties into Serilog context
+                using (LogContext.PushProperty("Level", log.Level))
+                using (LogContext.PushProperty("Source", log.Source))
+                using (LogContext.PushProperty("Requester", log.Requester))
+                using (LogContext.PushProperty("RequestId", log.RequestId))
+                using (LogContext.PushProperty("Environment", log.Environment))
+                using (LogContext.PushProperty("MachineName", Environment.MachineName))
+                using (LogContext.PushProperty("Timestamp", log.Timestamp))
+                {
+                    Log.Information(log.Message);
+                }
+
                 //forward to Elasticsearch 
                 var response = await _elasticClient.IndexDocumentAsync(log);
                 if (!response.IsValid)
@@ -78,7 +93,6 @@ namespace LoggingAPI.Controllers
                 });
             }
         }
-
 
         //validation method
         private bool IsValidLog(LogEntry log)
@@ -163,42 +177,7 @@ namespace LoggingAPI.Controllers
 
 
     }
-
-
-    [ApiController]
-    [Route("sample")]
-    public class SampleController : ControllerBase
-    {
-        private readonly ILogger<SampleController> _logger;
-
-        public SampleController(ILogger<SampleController> logger)
-        {
-            _logger = logger;
-        }
-
-        [HttpGet]
-        public IActionResult Get()
-        {
-            // Different log levels
-            _logger.LogInformation("This is an INFO message");
-            _logger.LogDebug("This is a DEBUG message");
-            _logger.LogWarning("This is a WARNING message");
-            _logger.LogError("This is an ERROR message");
-
-            try
-            {
-                throw new Exception("Sample exception");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "This is an ERROR with exception");
-            }
-
-            return Ok();
-        }
-    }
-
-
+      
 
 }
 

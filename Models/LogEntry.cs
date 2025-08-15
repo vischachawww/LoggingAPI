@@ -18,6 +18,9 @@ namespace LoggingAPI.Models
         public string Source { get; set; } = string.Empty;
         public string UserID { get; set; } = string.Empty;
         public string RequestPath { get; set; } = string.Empty;
+        public string Requester { get; set; } = string.Empty;
+        public string RequestId { get; set; } = string.Empty;
+        public string Environment { get; set; } = string.Empty;
         [Range(100, 599)] //int default value is 0, but 0 is outside of range. no status in log = validation fail
         public int Status { get; set; }
         //  [JsonExtensionData]
@@ -26,6 +29,6 @@ namespace LoggingAPI.Models
         //optional 
         public string? ErrorCode { get; set; }  //application-specific error identifier
         public string? StackTrace { get; set; }  //detailed error trace (for ERROR logs)
-        public string? RequestId { get; set; }   //to trace specific requests
+       
     }
 }
