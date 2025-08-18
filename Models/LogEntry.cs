@@ -8,20 +8,36 @@ namespace LoggingAPI.Models
     public class LogEntry
     {
         [Required]
-        public DateTime Timestamp { get; set; }
+        [JsonPropertyName("@timestamp")] // Critical for ES mapping
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
         [Required]
         //case sensitive
         [RegularExpression("(?i)^(INFO|WARN|ERROR|DEBUG)$", ErrorMessage = "Level must be one of: INFO, WARN, ERROR, DEBUG")]
+         [JsonPropertyName("Level")]
         public string Level { get; set; } = string.Empty;
         [Required]
+         [JsonPropertyName("Message")]
         public string Message { get; set; } = string.Empty;
+         [Required]
+         [JsonPropertyName("CorrelationId")]
+        public string CorrelationId { get; set; } = string.Empty;
+         [Required]
+         [JsonPropertyName("Elapsed")]
+        public string Elapsed { get; set; } = string.Empty;
+          [JsonPropertyName("Source")]
         public string Source { get; set; } = string.Empty;
+        [JsonPropertyName("UserID")]
         public string UserID { get; set; } = string.Empty;
+          [JsonPropertyName("RequestPath")]
         public string RequestPath { get; set; } = string.Empty;
+          [JsonPropertyName("Requester")]
         public string Requester { get; set; } = string.Empty;
+          [JsonPropertyName("RequestId")]
         public string RequestId { get; set; } = string.Empty;
+        [JsonPropertyName("Environment")]
         public string Environment { get; set; } = string.Empty;
-        [Range(100, 599)] //int default value is 0, but 0 is outside of range. no status in log = validation fail
+        [Range(100, 599)] 
+          [JsonPropertyName("Status")]
         public int Status { get; set; }
         //  [JsonExtensionData]
         //  public Dictionary<string, object> Metadata { get; set; } = new();

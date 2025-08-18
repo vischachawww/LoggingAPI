@@ -49,8 +49,9 @@ namespace LoggingAPI.Controllers
                         Errors = GetValidationErrors(log)
                     });
                 }
-                
+
                 //push structured properties into Serilog context
+                using (LogContext.PushProperty("CorrelationId", log.CorrelationId))
                 using (LogContext.PushProperty("Level", log.Level))
                 using (LogContext.PushProperty("Source", log.Source))
                 using (LogContext.PushProperty("Requester", log.Requester))
@@ -58,6 +59,8 @@ namespace LoggingAPI.Controllers
                 using (LogContext.PushProperty("Environment", log.Environment))
                 using (LogContext.PushProperty("MachineName", Environment.MachineName))
                 using (LogContext.PushProperty("Timestamp", log.Timestamp))
+                using (LogContext.PushProperty("Elapsed", log.Elapsed))
+                
                 {
                     Log.Information(log.Message);
                 }
@@ -155,7 +158,7 @@ namespace LoggingAPI.Controllers
                     return StatusCode(500, "Failed to connect to Elasticsearch");
 
                 // Simplified index check
-                var indexResponse = await _elasticClient.Indices.ExistsAsync("logs-*");
+                var indexResponse = await _elasticClient.Indices.ExistsAsync("loggingAPI-*");
 
                 return Ok(new
                 {
