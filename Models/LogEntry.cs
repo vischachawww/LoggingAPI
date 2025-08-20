@@ -1,50 +1,45 @@
 using System.ComponentModel.DataAnnotations;
 //import validation attributes like [Required][Range]
 using System.Text.Json.Serialization;
-
+using Nest;
 namespace LoggingAPI.Models
 //grouping this class logically w other model-related code
 {
-    public class LogEntry
-    {
-        [Required]
-        [JsonPropertyName("@timestamp")] // Critical for ES mapping
-        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-        [Required]
-        //case sensitive
-        [RegularExpression("(?i)^(INFO|WARN|ERROR|DEBUG)$", ErrorMessage = "Level must be one of: INFO, WARN, ERROR, DEBUG")]
-         [JsonPropertyName("Level")]
-        public string Level { get; set; } = string.Empty;
-        [Required]
-         [JsonPropertyName("Message")]
-        public string Message { get; set; } = string.Empty;
-         [Required]
-         [JsonPropertyName("CorrelationId")]
-        public string CorrelationId { get; set; } = string.Empty;
-         [Required]
-         [JsonPropertyName("Elapsed")]
-        public string Elapsed { get; set; } = string.Empty;
-          [JsonPropertyName("Source")]
-        public string Source { get; set; } = string.Empty;
-        [JsonPropertyName("UserID")]
-        public string UserID { get; set; } = string.Empty;
-          [JsonPropertyName("RequestPath")]
-        public string RequestPath { get; set; } = string.Empty;
-          [JsonPropertyName("Requester")]
-        public string Requester { get; set; } = string.Empty;
-          [JsonPropertyName("RequestId")]
-        public string RequestId { get; set; } = string.Empty;
-        [JsonPropertyName("Environment")]
-        public string Environment { get; set; } = string.Empty;
-        [Range(100, 599)] 
-          [JsonPropertyName("Status")]
-        public int Status { get; set; }
-        //  [JsonExtensionData]
-        //  public Dictionary<string, object> Metadata { get; set; } = new();
+  public class LogEntry
+  {
+    [PropertyName("@timestamp")]
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    [Required(ErrorMessage = "CorrelationId is required")]
+    public string CorrelationId { get; set; }
+    [Required(ErrorMessage = "RemoteServerIp is required")]
+    [RegularExpression(@"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", ErrorMessage = "Invalid IP format")]
+    public string RemoteServerIp { get; set; }
+    [Required(ErrorMessage = "RequestBody is required")]
+    public string RequestBody { get; set; }
+    [Required(ErrorMessage = "RequestDateTime is required")]
+    public DateTime RequestDateTime { get; set; }
+    [Required(ErrorMessage = "RequestHeaders is required")]
+    public Dictionary<string, string> RequestHeaders { get; set; }
+    [Required(ErrorMessage = "RequestHost is required")]
+    public string RequestHost { get; set; }
+    [Required(ErrorMessage = "RequestMethod is required")]
+    public string RequestMethod { get; set; }
+    [Required(ErrorMessage = "RequestPath is required")]
+    public string RequestPath { get; set; }
+     [Required(ErrorMessage = "RequestProtocol is required")]
+    public string RequestProtocol { get; set; }
+    [Required(ErrorMessage = "RequestBody is required")]
+    public string ResponseBody { get; set; }
+    [Required(ErrorMessage = "ResponseDateTime is required")]
+    public DateTime ResponseDateTime { get; set; }
+    [Required(ErrorMessage = "ServerName is required")]
+    public string ServerName { get; set; }
+    [Range(100, 599, ErrorMessage = "StatusCode must be 100-599")]
+    public int StatusCode { get; set; }
+    [Required(ErrorMessage = "User is required")]
+    public string User { get; set; }
+    [Required(ErrorMessage = "ElapsedMs is required")]
+    public float ElapsedMs { get; set; }  
 
-        //optional 
-        public string? ErrorCode { get; set; }  //application-specific error identifier
-        public string? StackTrace { get; set; }  //detailed error trace (for ERROR logs)
-       
-    }
+  }
 }

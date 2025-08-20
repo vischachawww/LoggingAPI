@@ -12,7 +12,6 @@ using System.ComponentModel.DataAnnotations;
 namespace LoggingAPI.Controllers
 
 {
-
     //define base route 
     // API endpoint is POST http://localhost:<port>/logs
     [ApiController]
@@ -22,63 +21,55 @@ namespace LoggingAPI.Controllers
     {
         private readonly ILogger<LogsController> _logger;   //Microsoft.Extensions.Logging
         private readonly IElasticClient _elasticClient;
-        public LogsController(ILogger<LogsController> logger, IElasticClient elasticClient)
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        public LogsController(ILogger<LogsController> logger, IElasticClient elasticClient, IHttpContextAccessor httpContextAccessor)
         {
             _logger = logger;
             _elasticClient = elasticClient;
+            _httpContextAccessor = httpContextAccessor;
         }
 
-        [HttpPost]      
+        [HttpPost]
         public async Task<ActionResult<ApiResponse<LogEntry>>> PostLog([FromBody] LogEntry log)
         {
+            // Log any incoming request
+            //_logger.LogInformation("Received log submission: {@LogEntry}", log);
 
-            // Log the incoming request (good or bad)
-            _logger.LogInformation("Received log submission: {@LogEntry}", log);
-            //_logger.LogDebug("Full log details: {@LogEntry}", log); // Debug view of entire object
+            // Auto-populate server-generated fields
+            var httpContext = _httpContextAccessor.HttpContext;
+            log.CorrelationId ??= httpContext?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
+            log.ServerName ??= Environment.MachineName;
+            log.RemoteServerIp ??= httpContext?.Connection.RemoteIpAddress?.ToString();
+            log.User ??= httpContext?.User.Identity?.Name ?? "Anonymous";
 
+            // Strict validation
+            var validationErrors = GetValidationErrors(log);
+            if (validationErrors.Any())
+            {
+                _logger.LogWarning("Invalid log entry: {Errors}", string.Join(", ", validationErrors));
+                return BadRequest(new ApiResponse<LogEntry>
+                {
+                    Success = false,
+                    Message = "Validation failed",
+                    Errors = validationErrors
+                });
+            }
             try
             {
-                // Validation
-                if (!IsValidLog(log))
+                // Structured logging context
+                using (LogContext.PushProperty("LogEntry", log, true))
                 {
-                    _logger.LogWarning("Invalid log entry received: {@Log}", log);
-                    return BadRequest(new ApiResponse<LogEntry>
-                    {
-                        Success = false,
-                        Message = "Validation failed",
-                        Errors = GetValidationErrors(log)
-                    });
+                    Log.Information("API log received");
                 }
 
-                //push structured properties into Serilog context
-                using (LogContext.PushProperty("CorrelationId", log.CorrelationId))
-                using (LogContext.PushProperty("Level", log.Level))
-                using (LogContext.PushProperty("Source", log.Source))
-                using (LogContext.PushProperty("Requester", log.Requester))
-                using (LogContext.PushProperty("RequestId", log.RequestId))
-                using (LogContext.PushProperty("Environment", log.Environment))
-                using (LogContext.PushProperty("MachineName", Environment.MachineName))
-                using (LogContext.PushProperty("Timestamp", log.Timestamp))
-                using (LogContext.PushProperty("Elapsed", log.Elapsed))
-                
-                {
-                    Log.Information(log.Message);
-                }
-
-                //forward to Elasticsearch 
+                // Elasticsearch indexing
                 var response = await _elasticClient.IndexDocumentAsync(log);
                 if (!response.IsValid)
                 {
-                    _logger.LogError("Elasticsearch error: {DebugInfo}", response.DebugInformation);
-                    return StatusCode(500, new ApiResponse<LogEntry>
-                    {
-                        Success = false,
-                        Message = "Failed to index log",
-                        Errors = new[] { response.OriginalException?.Message ?? "Unknown Elasticsearch error" }
-                    });
+                    throw new Exception(response.DebugInformation);
                 }
 
-                return CreatedAtAction(nameof(PostLog), new ApiResponse<LogEntry>
+                return Ok(new ApiResponse<LogEntry>
                 {
                     Success = true,
                     Message = "Log indexed successfully",
@@ -87,7 +78,7 @@ namespace LoggingAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error processing log");
+                _logger.LogError(ex, "Log processing failed");
                 return StatusCode(500, new ApiResponse<LogEntry>
                 {
                     Success = false,
@@ -95,32 +86,36 @@ namespace LoggingAPI.Controllers
                     Errors = new[] { ex.Message }
                 });
             }
+
         }
 
-        //validation method
-        private bool IsValidLog(LogEntry log)
-        {
-            if (log == null) return false;
-
-            var validLevels = new[] { "INFO", "WARN", "ERROR", "DEBUG" };
-            return log.Timestamp != default &&
-            validLevels.Contains(log.Level.ToUpper()) &&
-            !string.IsNullOrWhiteSpace(log.Source) &&
-            !string.IsNullOrWhiteSpace(log.Message);
-        }
-
-        private IEnumerable<string> GetValidationErrors(LogEntry log)
+        private List<string> GetValidationErrors(LogEntry log)
         {
             var errors = new List<string>();
 
-            if (string.IsNullOrWhiteSpace(log.Message))
-                errors.Add("Message is required");
+            // Manual validation (beyond DataAnnotations)
+            if (log == null)
+            {
+                errors.Add("Log entry cannot be null");
+                return errors;
+            }
 
-            if (string.IsNullOrWhiteSpace(log.Level))
-                errors.Add("Level [INFO, WARN, ERROR, DEBUG] is required");
+            // Validate DateTime sequence
+            if (log.ResponseDateTime < log.RequestDateTime)
+            {
+                errors.Add("ResponseDateTime cannot be earlier than RequestDateTime");
+            }
 
-            if (string.IsNullOrWhiteSpace(log.Source))
-                errors.Add("Source is required");
+            // Validate headers
+            if (log.RequestHeaders == null || !log.RequestHeaders.Any())
+            {
+                errors.Add("At least one request header is required");
+            }
+            // Add DataAnnotations validation errors
+            var validationContext = new ValidationContext(log);
+            var validationResults = new List<ValidationResult>();
+            Validator.TryValidateObject(log, validationContext, validationResults, true);
+            errors.AddRange(validationResults.Select(v => v.ErrorMessage));
 
             return errors;
         }
@@ -177,13 +172,10 @@ namespace LoggingAPI.Controllers
                 });
             }
         }
-
-
     }
       
 
 }
-
 
 
 

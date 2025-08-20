@@ -17,7 +17,6 @@ namespace LoggingAPI.Middleware
             _logger = logger;
         }
 
-
         public async Task InvokeAsync(HttpContext context)
         {
             var stopwatch = Stopwatch.StartNew();
@@ -80,6 +79,5 @@ namespace LoggingAPI.Middleware
             response.Body.Seek(0, SeekOrigin.Begin);
             return text;
         }
-
     }
 }
