@@ -1,3 +1,4 @@
+//Application configuration and startup
 using System.Data;
 using System.Runtime.Serialization;
 using Microsoft.AspNetCore.Mvc; // For BadRequestObjectResult
@@ -8,6 +9,7 @@ using Serilog.Context;
 using Serilog.Formatting.Elasticsearch;
 using Serilog.Sinks.Elasticsearch;
 using Serilog.Enrichers;
+using Microsoft.OpenApi.Models; 
 using Microsoft.AspNetCore.Diagnostics; //this provides IExceptionHandlerFeature
 using LoggingAPI.Models;
 
@@ -21,7 +23,7 @@ Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .CreateLogger();
 
-// Required for accessing HTTP context in controller
+//required for accessing HTTP context in controller
 builder.Services.AddHttpContextAccessor();
 
 //serilog registration, use serilog for all app logs 
@@ -30,7 +32,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Host.UseSerilog((ctx, config) => 
 {
     config.ReadFrom.Configuration(ctx.Configuration)
-          .Enrich.WithProperty("Application", "BankLoggingAPI")
+          //add fixed properties to every log
+          .Enrich.WithProperty("Application", "LoggingAPI")
           .Enrich.WithProperty("@timestamp", DateTime.UtcNow)
           .Enrich.FromLogContext();
 });
@@ -66,14 +69,23 @@ builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(options =>
     {
         options.SuppressModelStateInvalidFilter = true; //we handle verification manually
+    })
+     .AddJsonOptions(opts =>
+    {
+        opts.JsonSerializerOptions.PropertyNamingPolicy = null; // Keeps PascalCase
     });
 
-
 builder.Services.AddEndpointsApiExplorer();
-//builder.Services.AddSwaggerGen();
+
+//Swagger
 builder.Services.AddSwaggerGen(c => 
 {
-    c.SwaggerDoc("v1", new() { Title = "Bank Logging API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+    Title = "Logging API", 
+    Version = "v1",
+    Description = "Centralized logging system for banking applications"
+    });
 });
 
 var app = builder.Build();
@@ -83,9 +95,10 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     //app.UseSwaggerUI();
-    app.UseSwaggerUI(c => 
+    app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Bank Logging API v1");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Logging API v1");
+        c.RoutePrefix = "swagger";
     });
 }
 

@@ -1,4 +1,4 @@
-// LoggingMiddleware.cs
+//HTTP Traffic Logger, logs every HTTP req/res
 using Microsoft.AspNetCore.Http;
 using Serilog;
 using System.Diagnostics;

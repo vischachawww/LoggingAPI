@@ -13,9 +13,10 @@ namespace LoggingAPI.Controllers
 
 {
     //define base route 
-    // API endpoint is POST http://localhost:<port>/logs
+    // API endpoint is POST http://localhost:<port>/logs 
     [ApiController]
     [Route("logs")]
+    [Produces("application/json")]
     public class LogsController : ControllerBase
     //define a controller named LogsController, inheriting from ControllerBase (used for APIs)
     {
@@ -29,7 +30,16 @@ namespace LoggingAPI.Controllers
             _httpContextAccessor = httpContextAccessor;
         }
 
+        //REST API Controller
         [HttpPost]
+        [Consumes("application/json")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<ApiResponse<LogEntry>>> PostLog([FromBody] LogEntry log)
         {
             // Log any incoming request
@@ -42,12 +52,12 @@ namespace LoggingAPI.Controllers
             log.RemoteServerIp ??= httpContext?.Connection.RemoteIpAddress?.ToString();
             log.User ??= httpContext?.User.Identity?.Name ?? "Anonymous";
 
-            // Strict validation
+            // Strict validation 
             var validationErrors = GetValidationErrors(log);
             if (validationErrors.Any())
             {
                 _logger.LogWarning("Invalid log entry: {Errors}", string.Join(", ", validationErrors));
-                return BadRequest(new ApiResponse<LogEntry>
+                return BadRequest(new ApiResponse<LogEntry>     //swagger sees 400
                 {
                     Success = false,
                     Message = "Validation failed",
@@ -63,13 +73,14 @@ namespace LoggingAPI.Controllers
                 }
 
                 // Elasticsearch indexing
-                var response = await _elasticClient.IndexDocumentAsync(log);
+                //API sends log to ES using NEST client
+                var response = await _elasticClient.IndexDocumentAsync(log);  //index single docuemnt
                 if (!response.IsValid)
                 {
                     throw new Exception(response.DebugInformation);
                 }
 
-                return Ok(new ApiResponse<LogEntry>
+                return Ok(new ApiResponse<LogEntry>     //swagger sees 200
                 {
                     Success = true,
                     Message = "Log indexed successfully",
@@ -121,7 +132,7 @@ namespace LoggingAPI.Controllers
         }
 
         //testing to make sure controller is working, temporary GET endpoint
-        //shown in the web http://localhost:5191/logs
+        //shown in the http://localhost:5191/logs
         [HttpGet]
         public IActionResult Ping()
         {
