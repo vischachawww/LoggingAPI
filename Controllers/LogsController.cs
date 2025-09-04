@@ -131,63 +131,164 @@ namespace LoggingAPI.Controllers
             return errors;
         }
 
-        //testing to make sure controller is working, temporary GET endpoint
         //shown in the http://localhost:5191/logs
         [HttpGet]
-        public IActionResult Ping()
-        {
-            return Ok(new ApiResponse<string>
-            {
-                Success = true,
-                Message = "API is up!",
-                Data = DateTime.UtcNow.ToString("o")
-            });
-        }
-
-
-        [HttpGet("test")]
-        public IActionResult Test()
-        {
-            Log.Information("This is a test message");
-            return Ok();
-        }
-
-        //health check endpoint
-        [HttpGet("es-health")]
-        public async Task<IActionResult> CheckElasticsearch()
+        [ProducesResponseType(typeof(List<LogEntry>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetLogs()
         {
             try
             {
-                // Basic ping check
-                var pingResponse = await _elasticClient.PingAsync();
-                if (!pingResponse.IsValid)
-                    return StatusCode(500, "Failed to connect to Elasticsearch");
+                // Simple search - get recent logs
+                var response = await _elasticClient.SearchAsync<LogEntry>(s => s
+                    .Sort(so => so.Descending(f => f.RequestDateTime))
+                    .Size(10));
 
-                // Simplified index check
-                var indexResponse = await _elasticClient.Indices.ExistsAsync("loggingAPI-*");
-
-                return Ok(new
+                //return Ok(response.Documents);
+                return Ok(new ApiResponse<string>
                 {
-                    Status = "Operational",
-                    PingSuccess = pingResponse.IsValid,
-                    IndicesExist = indexResponse.Exists,
-                    DebugInfo = pingResponse.DebugInformation
+                    Success = true,
+                    Message = "API is up!",
+                    Data = DateTime.UtcNow.ToString("o")
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new
+                return StatusCode(500, new ProblemDetails
                 {
-                    Error = ex.Message,
-                    StackTrace = ex.StackTrace
+                    Title = "Elasticsearch error",
+                    Detail = ex.Message
+                });
+            }
+        }
+
+        //health check endpoint
+        [HttpGet("health")]
+        [ProducesResponseType(typeof(ElasticHealthResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+        public async Task<IActionResult> GetHealth()
+        {
+            try
+            {
+                // Check Elasticsearch connection
+                var health = await _elasticClient.Cluster.HealthAsync();
+                var response = new ElasticHealthResponse
+                {
+                    Status = health.Status.ToString(),
+                    StatusDescription = health.Status.ToString() switch
+                    {
+                        "Green" => "Fully operational - all shards allocated",
+                        "Yellow" => "Functional but some replicas missing - expected in single node",
+                        "Red" => "Critical failure - primary shards unavailable",
+                        _ => "Unknown status"
+                    },
+                    NodeCount = health.NumberOfNodes,
+                    IsHealthy = health.Status == Elasticsearch.Net.Health.Green,  // Fixed namespace
+                    Timestamp = DateTime.UtcNow
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(503, new ProblemDetails
+                {
+                    Title = "Elasticsearch unavailable",
+                    Detail = ex.Message,
+                    Status = 503
+                });
+            }
+        }
+
+
+        [HttpGet("stats")]
+        [ProducesResponseType(typeof(ApiStatsResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> GetStats()
+        {
+            try
+            {
+                // total logs count in ES
+                var totalLogs = await _elasticClient.CountAsync<LogEntry>();
+
+                 // Count validation errors (400-499)
+                var validationErrors = await _elasticClient.CountAsync<LogEntry>(c => c
+                    .Query(q => q
+                        .Range(r => r
+                            .Field(f => f.StatusCode)
+                            .GreaterThanOrEquals(400)
+                            .LessThan(500)
+                        )
+                    )
+                );
+                
+                // Count server errors (500-599)
+                var serverErrors = await _elasticClient.CountAsync<LogEntry>(c => c
+                    .Query(q => q
+                        .Range(r => r
+                            .Field(f => f.StatusCode)
+                            .GreaterThanOrEquals(500)
+                        )
+                    )
+                );
+
+                // Calculate rates
+                double validationErrorRate = totalLogs.Count > 0 
+                    ? (validationErrors.Count * 100.0) / totalLogs.Count 
+                    : 0;
+                    
+                double serverErrorRate = totalLogs.Count > 0 
+                    ? (serverErrors.Count * 100.0) / totalLogs.Count 
+                    : 0;
+                    
+                double totalErrorRate = validationErrorRate + serverErrorRate;
+
+                //get most active user = user with most log entries
+                var userStats = await _elasticClient.SearchAsync<LogEntry>(s => s
+                    .Size(0)
+                    .Aggregations(aggs => aggs
+                        .Terms("active_users", t => t
+                            .Field(f => f.User.Suffix("keyword"))
+                            .Size(1)
+                        )
+                    )
+                );
+
+                var mostActiveUser = userStats.Aggregations.Terms("active_users")?.Buckets?.FirstOrDefault()?.Key ?? "N/A";
+
+                return Ok(new ApiStatsResponse
+                {
+                    TotalLogs = totalLogs.Count,
+                    ValidationErrorRate = Math.Round(validationErrorRate, 2),
+                    ServerErrorRate = Math.Round(serverErrorRate,2),
+                    TotalErrorRate = Math.Round(totalErrorRate,2),
+                    MostActiveUser = mostActiveUser.ToString(),
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ProblemDetails
+                {
+                    Title = "Failed to retrieve statistics",
+                    Detail = ex.Message
                 });
             }
         }
     }
-      
+
 
 }
 
-
+public class ApiStatsResponse
+{
+    public long TotalLogs { get; set; }
+    //adding multiple metrics
+     public double ValidationErrorRate { get; set; }  // 400-499
+    public double ServerErrorRate { get; set; }      // 500-599
+    public double TotalErrorRate { get; set; }       // 400-599
+    public string MostActiveUser { get; set; }
+    public DateTime Timestamp { get; set; }
+}
 
 

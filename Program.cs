@@ -12,6 +12,8 @@ using Serilog.Enrichers;
 using Microsoft.OpenApi.Models; 
 using Microsoft.AspNetCore.Diagnostics; //this provides IExceptionHandlerFeature
 using LoggingAPI.Models;
+//using LoggingAPI.Controllers;
+using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,6 +75,7 @@ builder.Services.AddControllers()
      .AddJsonOptions(opts =>
     {
         opts.JsonSerializerOptions.PropertyNamingPolicy = null; // Keeps PascalCase
+        opts.JsonSerializerOptions.Converters.Add(new ObjectJsonConverter()); // <<< critical
     });
 
 builder.Services.AddEndpointsApiExplorer();

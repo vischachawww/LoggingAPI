@@ -1,8 +1,12 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
+
 //import validation attributes like [Required][Range]
 using System.Text.Json.Serialization;
 using Nest;
+//using Newtonsoft.Json;
 namespace LoggingAPI.Models
+
 //grouping this class logically w other model-related code
 {
   public class LogEntry
@@ -14,8 +18,9 @@ namespace LoggingAPI.Models
     [Required(ErrorMessage = "RemoteServerIp is required")]
     [RegularExpression(@"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", ErrorMessage = "Invalid IP format")]
     public string RemoteServerIp { get; set; }
-    [Required(ErrorMessage = "RequestBody is required")]
-    public string RequestBody { get; set; }
+  [Required(ErrorMessage = "RequestBody is required")]
+  [JsonPropertyName("requestBody")]
+    public object RequestBody { get; set; }
     [Required(ErrorMessage = "RequestDateTime is required")]
     public DateTime RequestDateTime { get; set; }
     [Required(ErrorMessage = "RequestHeaders is required")]
@@ -28,8 +33,9 @@ namespace LoggingAPI.Models
     public string RequestPath { get; set; }
      [Required(ErrorMessage = "RequestProtocol is required")]
     public string RequestProtocol { get; set; }
-    [Required(ErrorMessage = "RequestBody is required")]
-    public string ResponseBody { get; set; }
+  [Required(ErrorMessage = "RequestBody is required")]
+  [JsonPropertyName("responseBody")]
+    public object ResponseBody { get; set; }
     [Required(ErrorMessage = "ResponseDateTime is required")]
     public DateTime ResponseDateTime { get; set; }
     [Required(ErrorMessage = "ServerName is required")]
