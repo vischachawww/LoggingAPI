@@ -14,6 +14,9 @@ using Microsoft.AspNetCore.Diagnostics; //this provides IExceptionHandlerFeature
 using LoggingAPI.Models;
 //using LoggingAPI.Controllers;
 using Newtonsoft.Json;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -81,17 +84,55 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 
 //Swagger
-builder.Services.AddSwaggerGen(c => 
+builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo
     {
-    Title = "Logging API", 
-    Version = "v1",
-    Description = "Centralized logging system for banking applications"
+        Title = "Logging API",
+        Version = "v1",
+        Description = "Centralized logging system for banking applications"
     });
+    //using JWT in Swagger (swagger can take a token and send it with requests)
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        In = ParameterLocation.Header,
+        Description = "Please enter JWT with Bearer into field. Example: \"Bearer {token}\"",
+        Name = "Authorization",
+        Type = SecuritySchemeType.ApiKey
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement {
+    {
+        new OpenApiSecurityScheme {
+            Reference = new OpenApiReference {
+                Type = ReferenceType.SecurityScheme,
+                Id = "Bearer"
+            }
+        },
+        Array.Empty<string>()
+    }});
 });
 
+// JWT Authentication setup
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = false, // you can set true if you want issuer validation
+        ValidateAudience = false, // same for audience
+        ValidateLifetime = false, // for now: no expiration, if have, flip to true
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
+    };
+});
+
+
 var app = builder.Build();
+app.UseDeveloperExceptionPage();
 
 //middleware pipeline
 if (app.Environment.IsDevelopment())
@@ -184,6 +225,9 @@ app.UseExceptionHandler(exceptionHandlerApp =>
         });
     });
 });
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Health check endpoint
 //app.MapHealthChecks("/health");

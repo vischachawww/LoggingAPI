@@ -8,6 +8,7 @@ using Serilog.Context;
 using Serilog;
 using Serilog.Enrichers;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Authorization;
 
 namespace LoggingAPI.Controllers
 
@@ -133,6 +134,7 @@ namespace LoggingAPI.Controllers
 
         //shown in the http://localhost:5191/logs
         [HttpGet]
+        [Authorize]
         [ProducesResponseType(typeof(List<LogEntry>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetLogs()
@@ -146,9 +148,9 @@ namespace LoggingAPI.Controllers
 
                 //return Ok(response.Documents);
                 return Ok(new ApiResponse<string>
-                {
+                { 
                     Success = true,
-                    Message = "API is up!",
+                    Message = "API is up! This is a protected endpoint",
                     Data = DateTime.UtcNow.ToString("o")
                 });
             }
@@ -200,6 +202,30 @@ namespace LoggingAPI.Controllers
             }
         }
 
+        [HttpGet("search")]
+        [Authorize]
+        public async Task<IActionResult> SearchLogs(
+            [FromQuery] string query = "",
+            [FromQuery] string applicationName = null,  // ← ADD THIS
+            [FromQuery] int size = 100)
+        {
+            var searchResponse = await _elasticClient.SearchAsync<LogEntry>(s => s
+                .Query(q => q
+                    .Bool(b => b
+                        .Must(
+                            applicationName != null 
+                                ? m => m.Term(t => t.ApplicationName, applicationName) 
+                                : null,
+                            m => m.QueryString(qs => qs.Query(query))
+                        )
+                    )
+                )
+                .Size(size)
+                .Sort(so => so.Descending(f => f.RequestDateTime))
+            );
+
+            return Ok(searchResponse.Documents);
+        }
 
         [HttpGet("stats")]
         [ProducesResponseType(typeof(ApiStatsResponse), StatusCodes.Status200OK)]

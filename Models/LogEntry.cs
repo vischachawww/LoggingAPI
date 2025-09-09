@@ -18,8 +18,8 @@ namespace LoggingAPI.Models
     [Required(ErrorMessage = "RemoteServerIp is required")]
     [RegularExpression(@"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", ErrorMessage = "Invalid IP format")]
     public string RemoteServerIp { get; set; }
-  [Required(ErrorMessage = "RequestBody is required")]
-  [JsonPropertyName("requestBody")]
+    [Required(ErrorMessage = "RequestBody is required")]
+    [JsonPropertyName("requestBody")]
     public object RequestBody { get; set; }
     [Required(ErrorMessage = "RequestDateTime is required")]
     public DateTime RequestDateTime { get; set; }
@@ -31,10 +31,10 @@ namespace LoggingAPI.Models
     public string RequestMethod { get; set; }
     [Required(ErrorMessage = "RequestPath is required")]
     public string RequestPath { get; set; }
-     [Required(ErrorMessage = "RequestProtocol is required")]
+    [Required(ErrorMessage = "RequestProtocol is required")]
     public string RequestProtocol { get; set; }
-  [Required(ErrorMessage = "RequestBody is required")]
-  [JsonPropertyName("responseBody")]
+    [Required(ErrorMessage = "RequestBody is required")]
+    [JsonPropertyName("responseBody")]
     public object ResponseBody { get; set; }
     [Required(ErrorMessage = "ResponseDateTime is required")]
     public DateTime ResponseDateTime { get; set; }
@@ -46,6 +46,9 @@ namespace LoggingAPI.Models
     public string User { get; set; }
     [Required(ErrorMessage = "ElapsedMs is required")]
     public float ElapsedMs { get; set; }  
+    [Required(ErrorMessage = "ApplicationName is required")]
+    [JsonPropertyName("applicationName")]
+    public string ApplicationName { get; set; }
 
   }
 }
