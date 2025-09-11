@@ -19,18 +19,20 @@ using Microsoft.AspNetCore.Authorization;
             _config = config;
         }
 
+        //jwt token generator
         [HttpPost("token")]
-        [AllowAnonymous]  // 🔑 this ensures login endpoint doesn’t need a token
+        [AllowAnonymous]  //public endpoint : anyone can request a token
         public IActionResult GenerateToken([FromBody] AuthRequest request)
         {
             if (string.IsNullOrEmpty(request.ApplicationName))
-                return BadRequest("Missing ApplicationName");
+                return BadRequest("Missing ApplicationName"); //400
 
+            //claims = information to store inside JWT
             var claims = new[]
             {
                 new Claim("ApplicationName", request.ApplicationName)
             };
-
+            //setup signing key and credentials .zzzzz
             var key = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -42,6 +44,7 @@ using Microsoft.AspNetCore.Authorization;
                 expires: DateTime.Now.AddYears(10), //lasts 10 yrs
                 signingCredentials: creds);
 
+            //convert the raw token into a string xxx.yyy.zzz and return to client in Json
             return Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
         }
     }

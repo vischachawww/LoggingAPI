@@ -194,6 +194,7 @@ app.Use(async (context, next) =>
         .ForContext("StatusCode", context.Response.StatusCode)
         .ForContext("User", context.User.Identity?.Name ?? "Anonymous")
         .ForContext("Elapsed", elapsed)
+        .ForContext("ApplicationName", context.User.FindFirst("ApplicationName")?.Value ?? "Unknown")
         .Information("API {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed}ms", 
             context.Request.Method,
             context.Request.Path,

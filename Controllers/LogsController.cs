@@ -18,6 +18,7 @@ namespace LoggingAPI.Controllers
     [ApiController]
     [Route("logs")]
     [Produces("application/json")]
+    [Authorize]
     public class LogsController : ControllerBase
     //define a controller named LogsController, inheriting from ControllerBase (used for APIs)
     {
@@ -33,6 +34,7 @@ namespace LoggingAPI.Controllers
 
         //REST API Controller
         [HttpPost]
+        [Authorize]
         [Consumes("application/json")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status201Created)]
@@ -43,11 +45,35 @@ namespace LoggingAPI.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<ActionResult<ApiResponse<LogEntry>>> PostLog([FromBody] LogEntry log)
         {
-            // Log any incoming request
-            //_logger.LogInformation("Received log submission: {@LogEntry}", log);
+            //extracxt appName from JWT claims
+            var appNameFromToken = User.Claims.FirstOrDefault(c => c.Type == "ApplicationName")?.Value;
+            if (string.IsNullOrEmpty(appNameFromToken))
+            {
+                return Unauthorized(new ApiResponse<LogEntry>
+                {
+                    Success = false,
+                    Message = "No application identity in token"
+                });
+            }
 
-            // Auto-populate server-generated fields
-            var httpContext = _httpContextAccessor.HttpContext;
+            // enforce that log.ApplicationName must match token's ApplicationName
+            if (!string.Equals(log.ApplicationName, appNameFromToken, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ObjectResult(new ApiResponse<LogEntry>
+                {
+                    Success = false,
+                    Message = $"Application '{log.ApplicationName}' is not authorized to send logs with this token."
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            // Log any incoming request
+                //_logger.LogInformation("Received log submission: {@LogEntry}", log);
+
+                // Auto-populate server-generated fields
+                var httpContext = _httpContextAccessor.HttpContext;
             log.CorrelationId ??= httpContext?.Items["CorrelationId"]?.ToString() ?? Guid.NewGuid().ToString();
             log.ServerName ??= Environment.MachineName;
             log.RemoteServerIp ??= httpContext?.Connection.RemoteIpAddress?.ToString();
@@ -148,7 +174,7 @@ namespace LoggingAPI.Controllers
 
                 //return Ok(response.Documents);
                 return Ok(new ApiResponse<string>
-                { 
+                {
                     Success = true,
                     Message = "API is up! This is a protected endpoint",
                     Data = DateTime.UtcNow.ToString("o")
@@ -206,26 +232,59 @@ namespace LoggingAPI.Controllers
         [Authorize]
         public async Task<IActionResult> SearchLogs(
             [FromQuery] string query = "",
-            [FromQuery] string applicationName = null,  // ← ADD THIS
+            [FromQuery] string applicationName = null,
+            [FromQuery] string last = null,  // 1h, 2d
             [FromQuery] int size = 100)
         {
+            var mustQueries = new List<Func<QueryContainerDescriptor<LogEntry>, QueryContainer>>();
+            if (!string.IsNullOrEmpty(applicationName))
+            {
+                mustQueries.Add(m => m.Term(t => t.ApplicationName, applicationName));
+            }
+
+            if (!string.IsNullOrEmpty(query))
+            {
+                mustQueries.Add(m => m.QueryString(qs => qs.Query(query)));
+            }
+            if (!string.IsNullOrEmpty(last))
+            {
+                var now = DateTime.UtcNow;
+                if (last.EndsWith("d") && int.TryParse(last.TrimEnd('d'), out int days))
+                {
+                    mustQueries.Add(m => m.DateRange(dr => dr
+                        .Field(f => f.RequestDateTime)
+                        .GreaterThanOrEquals(now.AddDays(-days))
+                        .LessThanOrEquals(now)
+                    ));
+                }
+                else if (last.EndsWith("h") && int.TryParse(last.TrimEnd('h'), out int hours))
+                {
+                    mustQueries.Add(m => m.DateRange(dr => dr
+                        .Field(f => f.RequestDateTime)
+                        .GreaterThanOrEquals(now.AddHours(-hours))
+                        .LessThanOrEquals(now)
+                    ));
+                }
+                else if (last.EndsWith("m") && int.TryParse(last.TrimEnd('m'), out int minutes))
+                {
+                    mustQueries.Add(m => m.DateRange(dr => dr
+                        .Field(f => f.RequestDateTime)
+                        .GreaterThanOrEquals(now.AddMinutes(-minutes))
+                        .LessThanOrEquals(now)
+                    ));
+                }
+            }
+
+            //Build Elasticsearch query
             var searchResponse = await _elasticClient.SearchAsync<LogEntry>(s => s
-                .Query(q => q
-                    .Bool(b => b
-                        .Must(
-                            applicationName != null 
-                                ? m => m.Term(t => t.ApplicationName, applicationName) 
-                                : null,
-                            m => m.QueryString(qs => qs.Query(query))
-                        )
-                    )
-                )
-                .Size(size)
+                .Query(q => q.Bool(b => b.Must(mustQueries.ToArray())))
                 .Sort(so => so.Descending(f => f.RequestDateTime))
+                .Size(size)
             );
 
             return Ok(searchResponse.Documents);
         }
+
 
         [HttpGet("stats")]
         [ProducesResponseType(typeof(ApiStatsResponse), StatusCodes.Status200OK)]
@@ -237,7 +296,7 @@ namespace LoggingAPI.Controllers
                 // total logs count in ES
                 var totalLogs = await _elasticClient.CountAsync<LogEntry>();
 
-                 // Count validation errors (400-499)
+                // Count validation errors (400-499)
                 var validationErrors = await _elasticClient.CountAsync<LogEntry>(c => c
                     .Query(q => q
                         .Range(r => r
@@ -247,7 +306,7 @@ namespace LoggingAPI.Controllers
                         )
                     )
                 );
-                
+
                 // Count server errors (500-599)
                 var serverErrors = await _elasticClient.CountAsync<LogEntry>(c => c
                     .Query(q => q
@@ -259,14 +318,14 @@ namespace LoggingAPI.Controllers
                 );
 
                 // Calculate rates
-                double validationErrorRate = totalLogs.Count > 0 
-                    ? (validationErrors.Count * 100.0) / totalLogs.Count 
+                double validationErrorRate = totalLogs.Count > 0
+                    ? (validationErrors.Count * 100.0) / totalLogs.Count
                     : 0;
-                    
-                double serverErrorRate = totalLogs.Count > 0 
-                    ? (serverErrors.Count * 100.0) / totalLogs.Count 
+
+                double serverErrorRate = totalLogs.Count > 0
+                    ? (serverErrors.Count * 100.0) / totalLogs.Count
                     : 0;
-                    
+
                 double totalErrorRate = validationErrorRate + serverErrorRate;
 
                 //get most active user = user with most log entries
@@ -286,8 +345,8 @@ namespace LoggingAPI.Controllers
                 {
                     TotalLogs = totalLogs.Count,
                     ValidationErrorRate = Math.Round(validationErrorRate, 2),
-                    ServerErrorRate = Math.Round(serverErrorRate,2),
-                    TotalErrorRate = Math.Round(totalErrorRate,2),
+                    ServerErrorRate = Math.Round(serverErrorRate, 2),
+                    TotalErrorRate = Math.Round(totalErrorRate, 2),
                     MostActiveUser = mostActiveUser.ToString(),
                     Timestamp = DateTime.UtcNow
                 });
